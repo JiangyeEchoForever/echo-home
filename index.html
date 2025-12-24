@@ -823,7 +823,8 @@
             <button class="modal-close" onclick="closeModal('photoModal')">&times;</button>
             <img id="previewImage" style="max-width: 100%; max-height: 70vh; border-radius: 10px; margin-bottom: 15px;">
             <h3 id="previewTitle" style="color: #b794f6; margin-bottom: 8px;"></h3>
-            <div id="previewDate" style="color: #888; font-size: 0.9em; margin-bottom: 10px;"></div>
+            <div id="previewDate" style="color: #888; font-size: 0.9em; margin-bottom: 5px;"></div>
+            <div id="previewViewCount" style="color: #b794f6; font-size: 0.85em; margin-bottom: 10px;"></div>
             <div id="previewMessage" style="color: #e0e0e0; font-style: italic; padding: 15px; background: rgba(183, 148, 246, 0.1); border-radius: 8px; margin-top: 10px; text-align: left; line-height: 1.6;"></div>
         </div>
     </div>
@@ -1434,6 +1435,9 @@
                 container.innerHTML = photos.map(photo => `
                     <div class="photo-item" onclick="previewPhoto('${photo.id}')" style="position: relative;">
                         <img src="${photo.url}" alt="${escapeHtml(photo.title || '照片')}">
+                        <div style="position: absolute; top: 8px; right: 8px; background: rgba(183, 148, 246, 0.9); padding: 4px 8px; border-radius: 12px; font-size: 0.75em; color: white;">
+                            👁️ ${photo.viewCount || 0}
+                        </div>
                         <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 8px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); font-size: 0.85em;">
                             <div style="font-weight: bold; color: #fff;">${escapeHtml(photo.title || '')}</div>
                             <div style="color: #aaa; font-size: 0.8em;">${photo.date || ''}</div>
@@ -1448,16 +1452,28 @@
 
         async function previewPhoto(photoId) {
             try {
-                const doc = await db.collection(COLLECTIONS.PHOTOS).doc(photoId).get();
+                const docRef = db.collection(COLLECTIONS.PHOTOS).doc(photoId);
+                const doc = await docRef.get();
                 if (!doc.exists) return;
                 
                 const photo = doc.data();
+                
+                // 增加访问次数
+                const currentCount = photo.viewCount || 0;
+                await docRef.update({
+                    viewCount: currentCount + 1
+                });
+                
                 document.getElementById('previewImage').src = photo.url;
                 document.getElementById('previewTitle').textContent = photo.title || '';
                 document.getElementById('previewDate').textContent = photo.date ? '📅 ' + photo.date : '';
                 document.getElementById('previewMessage').textContent = photo.message || '';
                 document.getElementById('previewMessage').style.display = photo.message ? 'block' : 'none';
+                document.getElementById('previewViewCount').textContent = '👁️ 被看了 ' + (currentCount + 1) + ' 次';
                 document.getElementById('photoModal').classList.add('active');
+                
+                // 刷新照片墙显示最新计数
+                loadPhotos();
             } catch (error) {
                 console.error('加载照片详情失败:', error);
             }
