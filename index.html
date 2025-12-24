@@ -717,6 +717,30 @@
                 <div class="card">
                     <h2>📷 照片墙</h2>
                     <p style="color: #888; margin-bottom: 20px;">老婆上传的照片都在这里 💜</p>
+                    
+                    <!-- 添加照片 -->
+                    <button class="tab-btn" onclick="showPhotoUploader()" style="margin-bottom: 20px;">➕ 添加照片</button>
+                    <div id="photoUploader" style="display: none; margin-bottom: 20px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; color: #b794f6; margin-bottom: 8px;">📷 照片链接（URL）</label>
+                            <input type="text" id="photoUrl" placeholder="粘贴图片链接..." style="width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; color: #b794f6; margin-bottom: 8px;">📝 照片描述/标题</label>
+                            <input type="text" id="photoTitle" placeholder="这是什么照片？" style="width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; color: #b794f6; margin-bottom: 8px;">📅 日期</label>
+                            <input type="date" id="photoDate" style="width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff;">
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; color: #b794f6; margin-bottom: 8px;">💜 想说的话（可选）</label>
+                            <textarea id="photoMessage" placeholder="关于这张照片想对Echo说的话..." rows="3" style="width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; resize: vertical;"></textarea>
+                        </div>
+                        <button onclick="savePhoto()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 8px; color: white; cursor: pointer;">保存照片</button>
+                        <button onclick="hidePhotoUploader()" style="padding: 10px 20px; background: rgba(255,255,255,0.1); border: none; border-radius: 8px; color: white; cursor: pointer; margin-left: 10px;">取消</button>
+                    </div>
+                    
                     <div class="photo-grid" id="photoGrid">
                         <div class="empty-state">
                             <div class="emoji">📷</div>
@@ -784,9 +808,12 @@
 
     <!-- 照片预览模态框 -->
     <div class="modal" id="photoModal">
-        <div class="modal-content" style="text-align: center; background: transparent; max-width: 90vw;">
+        <div class="modal-content" style="text-align: center; background: rgba(20, 20, 40, 0.95); max-width: 90vw; padding: 20px;">
             <button class="modal-close" onclick="closeModal('photoModal')">&times;</button>
-            <img id="previewImage" style="max-width: 100%; max-height: 85vh; border-radius: 10px;">
+            <img id="previewImage" style="max-width: 100%; max-height: 70vh; border-radius: 10px; margin-bottom: 15px;">
+            <h3 id="previewTitle" style="color: #b794f6; margin-bottom: 8px;"></h3>
+            <div id="previewDate" style="color: #888; font-size: 0.9em; margin-bottom: 10px;"></div>
+            <div id="previewMessage" style="color: #e0e0e0; font-style: italic; padding: 15px; background: rgba(183, 148, 246, 0.1); border-radius: 8px; margin-top: 10px; text-align: left; line-height: 1.6;"></div>
         </div>
     </div>
 
@@ -1276,6 +1303,52 @@
         }
 
         // ============ 照片功能 ============
+        function showPhotoUploader() {
+            document.getElementById('photoUploader').style.display = 'block';
+            // 设置默认日期为今天
+            document.getElementById('photoDate').value = new Date().toISOString().split('T')[0];
+        }
+
+        function hidePhotoUploader() {
+            document.getElementById('photoUploader').style.display = 'none';
+            document.getElementById('photoUrl').value = '';
+            document.getElementById('photoTitle').value = '';
+            document.getElementById('photoMessage').value = '';
+        }
+
+        async function savePhoto() {
+            const url = document.getElementById('photoUrl').value.trim();
+            const title = document.getElementById('photoTitle').value.trim();
+            const date = document.getElementById('photoDate').value;
+            const message = document.getElementById('photoMessage').value.trim();
+
+            if (!url) {
+                alert('请输入照片链接哦~');
+                return;
+            }
+            if (!title) {
+                alert('请给照片写个描述吧~');
+                return;
+            }
+
+            try {
+                await db.collection(COLLECTIONS.PHOTOS).add({
+                    url,
+                    title,
+                    date,
+                    message,
+                    createdAt: new Date().toISOString()
+                });
+
+                hidePhotoUploader();
+                loadPhotos();
+                alert('照片保存成功！💜');
+            } catch (error) {
+                console.error('保存照片失败:', error);
+                alert('保存失败，请重试...');
+            }
+        }
+
         async function loadPhotos() {
             const container = document.getElementById('photoGrid');
             container.innerHTML = '<div class="loading">加载中</div>';
@@ -1286,7 +1359,7 @@
                     .get();
                 
                 if (snapshot.empty) {
-                    container.innerHTML = '<div class="empty-state"><div class="emoji">📷</div><p>还没有照片哦<br>老婆上传的照片会显示在这里</p></div>';
+                    container.innerHTML = '<div class="empty-state"><div class="emoji">📷</div><p>还没有照片哦<br>点击上方按钮添加照片吧~</p></div>';
                     return;
                 }
                 
@@ -1296,8 +1369,12 @@
                 });
                 
                 container.innerHTML = photos.map(photo => `
-                    <div class="photo-item" onclick="previewPhoto('${photo.url}')">
-                        <img src="${photo.url}" alt="${photo.name || '照片'}">
+                    <div class="photo-item" onclick="previewPhoto('${photo.id}')" style="position: relative;">
+                        <img src="${photo.url}" alt="${escapeHtml(photo.title || '照片')}">
+                        <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 8px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); font-size: 0.85em;">
+                            <div style="font-weight: bold; color: #fff;">${escapeHtml(photo.title || '')}</div>
+                            <div style="color: #aaa; font-size: 0.8em;">${photo.date || ''}</div>
+                        </div>
                     </div>
                 `).join('');
             } catch (error) {
@@ -1306,9 +1383,21 @@
             }
         }
 
-        function previewPhoto(url) {
-            document.getElementById('previewImage').src = url;
-            document.getElementById('photoModal').classList.add('active');
+        async function previewPhoto(photoId) {
+            try {
+                const doc = await db.collection(COLLECTIONS.PHOTOS).doc(photoId).get();
+                if (!doc.exists) return;
+                
+                const photo = doc.data();
+                document.getElementById('previewImage').src = photo.url;
+                document.getElementById('previewTitle').textContent = photo.title || '';
+                document.getElementById('previewDate').textContent = photo.date ? '📅 ' + photo.date : '';
+                document.getElementById('previewMessage').textContent = photo.message || '';
+                document.getElementById('previewMessage').style.display = photo.message ? 'block' : 'none';
+                document.getElementById('photoModal').classList.add('active');
+            } catch (error) {
+                console.error('加载照片详情失败:', error);
+            }
         }
 
         // ============ 模态框 ============
