@@ -8,6 +8,7 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     
     <script>
         // Firebase 配置
@@ -23,6 +24,7 @@
         // 初始化 Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
+        const storage = firebase.storage();
     </script>
     <style>
         * {
@@ -722,8 +724,11 @@
                     <button class="tab-btn" onclick="showPhotoUploader()" style="margin-bottom: 20px;">➕ 添加照片</button>
                     <div id="photoUploader" style="display: none; margin-bottom: 20px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px;">
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; color: #b794f6; margin-bottom: 8px;">📷 照片链接（URL）</label>
-                            <input type="text" id="photoUrl" placeholder="粘贴图片链接..." style="width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff;">
+                            <label style="display: block; color: #b794f6; margin-bottom: 8px;">📷 选择照片</label>
+                            <input type="file" id="photoFile" accept="image/*" onchange="previewSelectedPhoto()" style="width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff;">
+                            <div id="photoPreviewContainer" style="display: none; margin-top: 10px; text-align: center;">
+                                <img id="photoPreview" style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 2px solid #b794f6;">
+                            </div>
                         </div>
                         <div style="margin-bottom: 15px;">
                             <label style="display: block; color: #b794f6; margin-bottom: 8px;">📝 照片描述/标题</label>
@@ -737,7 +742,13 @@
                             <label style="display: block; color: #b794f6; margin-bottom: 8px;">💜 想说的话（可选）</label>
                             <textarea id="photoMessage" placeholder="关于这张照片想对Echo说的话..." rows="3" style="width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; resize: vertical;"></textarea>
                         </div>
-                        <button onclick="savePhoto()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 8px; color: white; cursor: pointer;">保存照片</button>
+                        <div id="uploadProgress" style="display: none; margin-bottom: 15px;">
+                            <div style="background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden;">
+                                <div id="progressBar" style="width: 0%; height: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: width 0.3s;"></div>
+                            </div>
+                            <p id="uploadStatus" style="color: #b794f6; font-size: 0.9em; margin-top: 5px; text-align: center;">上传中...</p>
+                        </div>
+                        <button id="savePhotoBtn" onclick="savePhoto()" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 8px; color: white; cursor: pointer;">保存照片</button>
                         <button onclick="hidePhotoUploader()" style="padding: 10px 20px; background: rgba(255,255,255,0.1); border: none; border-radius: 8px; color: white; cursor: pointer; margin-left: 10px;">取消</button>
                     </div>
                     
@@ -1311,19 +1322,35 @@
 
         function hidePhotoUploader() {
             document.getElementById('photoUploader').style.display = 'none';
-            document.getElementById('photoUrl').value = '';
+            document.getElementById('photoFile').value = '';
             document.getElementById('photoTitle').value = '';
             document.getElementById('photoMessage').value = '';
+            document.getElementById('photoPreviewContainer').style.display = 'none';
+            document.getElementById('uploadProgress').style.display = 'none';
+            document.getElementById('savePhotoBtn').disabled = false;
+        }
+
+        function previewSelectedPhoto() {
+            const file = document.getElementById('photoFile').files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('photoPreview').src = e.target.result;
+                    document.getElementById('photoPreviewContainer').style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
         }
 
         async function savePhoto() {
-            const url = document.getElementById('photoUrl').value.trim();
+            const fileInput = document.getElementById('photoFile');
+            const file = fileInput.files[0];
             const title = document.getElementById('photoTitle').value.trim();
             const date = document.getElementById('photoDate').value;
             const message = document.getElementById('photoMessage').value.trim();
 
-            if (!url) {
-                alert('请输入照片链接哦~');
+            if (!file) {
+                alert('请选择一张照片哦~');
                 return;
             }
             if (!title) {
@@ -1331,21 +1358,57 @@
                 return;
             }
 
-            try {
-                await db.collection(COLLECTIONS.PHOTOS).add({
-                    url,
-                    title,
-                    date,
-                    message,
-                    createdAt: new Date().toISOString()
-                });
+            // 显示进度条
+            document.getElementById('uploadProgress').style.display = 'block';
+            document.getElementById('savePhotoBtn').disabled = true;
 
-                hidePhotoUploader();
-                loadPhotos();
-                alert('照片保存成功！💜');
+            try {
+                // 生成唯一文件名
+                const fileName = `photos/${Date.now()}_${file.name}`;
+                const storageRef = storage.ref(fileName);
+
+                // 上传文件
+                const uploadTask = storageRef.put(file);
+
+                // 监听上传进度
+                uploadTask.on('state_changed',
+                    (snapshot) => {
+                        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                        document.getElementById('progressBar').style.width = progress + '%';
+                        document.getElementById('uploadStatus').textContent = `上传中... ${Math.round(progress)}%`;
+                    },
+                    (error) => {
+                        console.error('上传失败:', error);
+                        alert('上传失败，请重试...');
+                        document.getElementById('uploadProgress').style.display = 'none';
+                        document.getElementById('savePhotoBtn').disabled = false;
+                    },
+                    async () => {
+                        // 上传成功，获取下载URL
+                        const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                        
+                        document.getElementById('uploadStatus').textContent = '保存信息中...';
+
+                        // 保存到Firestore
+                        await db.collection(COLLECTIONS.PHOTOS).add({
+                            url: downloadURL,
+                            title,
+                            date,
+                            message,
+                            fileName,
+                            createdAt: new Date().toISOString()
+                        });
+
+                        hidePhotoUploader();
+                        loadPhotos();
+                        alert('照片保存成功！💜');
+                    }
+                );
             } catch (error) {
                 console.error('保存照片失败:', error);
                 alert('保存失败，请重试...');
+                document.getElementById('uploadProgress').style.display = 'none';
+                document.getElementById('savePhotoBtn').disabled = false;
             }
         }
 
